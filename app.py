@@ -4,6 +4,7 @@ import numpy as np
 import joblib
 import os
 import itertools
+import altair as alt
 
 # ---------------------------------------------------------
 # 1. Page Configuration
