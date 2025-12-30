@@ -257,35 +257,86 @@ if submitted:
             st.altair_chart(gauge_chart + text, use_container_width=True)
             
             # Suggestion Box
+            st.markdown("### 📋 Clinical Interpretation & Recommendations")
+            
             if prob > 0.5:
-                st.error("⚠️ **Action Required**: High risk of dysfunction. Recommend closer surveillance (e.g., Doppler Ultrasound every 3 months) and review of modifiable factors.")
+                st.error("""
+                **🔴 High Risk Category**
+                
+                **Interpretation**: This patient has a significantly elevated risk of AVF dysfunction. The model estimates a >50% probability of failure or significant stenosis.
+                
+                **Recommended Actions**:
+                - **Immediate**: Refer for Duplex Ultrasound surveillance to assess flow volume and anatomy.
+                - **Monitoring**: Increase frequency of physical examination (e.g., every dialysis session) and dynamic venous pressure monitoring.
+                - **Intervention**: Review modifiable risk factors, specifically inflammation (CRP, MLR/NLR optimization) and lipid management.
+                """)
             elif prob > 0.2:
-                st.warning("ℹ️ **Monitoring**: Moderate risk. Routine monitoring recommended.")
+                st.warning("""
+                **🟡 Moderate Risk Category**
+                
+                **Interpretation**: This patient shows intermediate signs of risk. While not critical, early warning signs may be present.
+                
+                **Recommended Actions**:
+                - **Surveillance**: Monthly access flow monitoring (transonic or dilution) is recommended.
+                - **Maintenance**: Ensure proper needle rotation and cannulation technique to preserve vessel integrity.
+                - **Follow-up**: Re-assess risk markers (CRP, lipids) in 3 months.
+                """)
             else:
-                st.success("✅ **Stable**: Low risk. Continue standard of care.")
+                st.success("""
+                **🟢 Low Risk Category**
+                
+                **Interpretation**: The estimated risk is within the baseline range for the dialysis population.
+                
+                **Recommended Actions**:
+                - **Standard of Care**: Routine physical examination and standard surveillance protocols.
+                - **Prevention**: Continue current maintenance therapy and lifestyle management.
+                """)
 
         # 4.3 Interpretation (Contribution)
-        # Simplified "Feature Contribution" approximation based on coefficients * values
         st.markdown("<br>", unsafe_allow_html=True)
-        st.markdown('<div class="card"><h4>🔍 Why this result? (Interpretability)</h4>', unsafe_allow_html=True)
+        st.markdown('<div class="card"><h4>🔍 Individualized Risk Factor Analysis</h4>', unsafe_allow_html=True)
+        st.caption("Which factors contributed most to this specific prediction?")
         
         coeffs = model.coef_[0]
         feature_names = model.feature_names_in_ if hasattr(model, 'feature_names_in_') else X_final.columns
         
+        # Map raw names to readable names
+        readable_map = {
+            'log_MLR': 'MLR (Inflammation)',
+            'log_CRP': 'CRP (Inflammation)',
+            'log_triglycerides': 'Triglycerides (Lipids)',
+            'log_NLR': 'NLR (Inflammation)',
+            'IJVC': 'Hx of IJV Cannulation',
+            'sex': 'Sex',
+            'log_MLR*log_CRP': 'Interaction: MLR x CRP',
+            'log_MLR*log_triglycerides': 'Interaction: MLR x TG',
+            'log_MLR*log_NLR': 'Interaction: MLR x NLR',
+            # Add other potential interactions if they exist, or generic fallback
+        }
+        
         contributions = []
         for name, coef, val in zip(feature_names, coeffs, X_scaled[0]):
-            # Simple contribution: coef * scaled_val
-            # Better: SHAP, but for simplicity here use linear contribution
-            contributions.append({'Feature': name, 'Contribution': coef * val})
+            readable_name = readable_map.get(name, name)
+            # Calculate contribution (coef * value)
+            contrib_val = coef * val
+            contributions.append({'Risk Factor': readable_name, 'Impact': contrib_val})
             
-        df_contrib = pd.DataFrame(contributions).sort_values(by='Contribution', ascending=False, key=abs)
+        df_contrib = pd.DataFrame(contributions).sort_values(by='Impact', ascending=False, key=abs)
         
-        # Visualize
-        cols_chart = st.columns([2, 1])
-        with cols_chart[0]:
-            st.bar_chart(df_contrib.set_index('Feature').head(5))
-        with cols_chart[1]:
-            st.caption("The chart shows the top 5 factors driving the risk score for this specific patient. Positive bars increase risk, negative bars decrease risk.")
+        # Color coding for chart
+        df_contrib['Type'] = df_contrib['Impact'].apply(lambda x: 'Increases Risk' if x > 0 else 'Decreases Risk')
+        
+        # Altair Bar Chart
+        c = alt.Chart(df_contrib.head(6)).mark_bar().encode(
+            x=alt.X('Impact', title='Contribution to Risk Score'),
+            y=alt.Y('Risk Factor', sort='-x', title=None),
+            color=alt.Color('Type', scale=alt.Scale(domain=['Increases Risk', 'Decreases Risk'], range=['#e74c3c', '#2ecc71'])),
+            tooltip=['Risk Factor', 'Impact', 'Type']
+        ).properties(height=300)
+        
+        st.altair_chart(c, use_container_width=True)
+        
+        st.info("💡 **Note**: Positive bars (Red) indicate factors that are pushing the risk **higher** for this patient. Negative bars (Green) are protective factors.")
             
         st.markdown("</div>", unsafe_allow_html=True)
         
